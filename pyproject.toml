@@ -35,7 +35,10 @@ include = ["src/lossless_toolbox"]
 typeCheckingMode = "strict"
 pythonVersion = "3.10"
 pythonPlatform = "All"
-include = ["src", "tests"]
+# Declared scope == enforced gate (see README: `.venv/bin/basedpyright src`).
+# Tests are exercised by pytest, not strict type-checking: they intentionally
+# poke private members and untyped ffprobe dicts, which strict mode flags.
+include = ["src"]
 exclude = ["**/__pycache__", "**/.venv", "**/build", "**/dist"]
 
 # ─────────────────────────────────────────────────────────────────
