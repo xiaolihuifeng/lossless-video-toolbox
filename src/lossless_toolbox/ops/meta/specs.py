@@ -31,7 +31,7 @@ except ModuleNotFoundError:  # pragma: no cover - common.py lands with todo 5
         """Inline fallback mirroring ops/common.build_base_args."""
         return ["-hide_banner", "-nostdin", "-y"]
 
-from .argv import cover_mimetype, ffmpeg_path, is_mp4_like, suffix
+from .argv import cover_mimetype, is_mp4_like, suffix
 from .errors import UnsupportedCoverError, UnsupportedRotateError
 from .ffmetadata import ChapterArg, build_ffmetadata
 
@@ -51,7 +51,7 @@ class MetadataEditSpec(BaseModel):
 
     def build_argv(self) -> list[str]:
         """Build the stream-copy argv injecting the requested metadata."""
-        argv = [ffmpeg_path(), *build_base_args(), "-i", str(self.in_path)]
+        argv = [*build_base_args(), "-i", str(self.in_path)]
         if self.title is not None:
             argv += ["-metadata", f"title={self.title}"]
         if self.language_map:
@@ -95,7 +95,6 @@ class ChaptersSpec(BaseModel):
             tmp.flush()
         self._ffmeta_tmp = Path(tmp.name)
         return [
-            ffmpeg_path(),
             *build_base_args(),
             "-i",
             str(self.in_path),
@@ -150,7 +149,6 @@ class RotateSpec(BaseModel):
     def build_argv(self) -> list[str]:
         """Build the argv with ``-display_rotation`` before the input."""
         return [
-            ffmpeg_path(),
             *build_base_args(),
             "-display_rotation:v:0",
             str(360 - self.degrees),
@@ -189,7 +187,6 @@ class CoverSpec(BaseModel):
         # stream with the attached_pic disposition. This is a container operation
         # on the image, NOT a re-encode of the source A/V streams.
         return [
-            ffmpeg_path(),
             *build_base_args(),
             "-i",
             str(self.in_path),
@@ -210,7 +207,6 @@ class CoverSpec(BaseModel):
 
     def _mkv_argv(self) -> list[str]:
         return [
-            ffmpeg_path(),
             *build_base_args(),
             "-i",
             str(self.in_path),

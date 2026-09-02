@@ -44,14 +44,14 @@ _FFPROBE = str(resolve("ffprobe").path)
 
 def _run(argv: list[str]) -> None:
     proc = subprocess.run(  # noqa: S603 - argv built by specs, no shell
-        argv, capture_output=True, text=True, check=False,
+        [_FFMPEG, *argv], capture_output=True, text=True, check=False,
     )
     assert proc.returncode == 0, proc.stderr
 
 
 def _make_cover_png(path: Path) -> Path:
     _run([
-        _FFMPEG, "-y", "-hide_banner", "-loglevel", "error",
+        "-y", "-hide_banner", "-loglevel", "error",
         "-f", "lavfi", "-i", "color=red:size=64x64",
         "-frames:v", "1", str(path),
     ])

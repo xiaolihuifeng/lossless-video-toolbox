@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING, Final
 
 from pydantic import BaseModel, ConfigDict
 
+from lossless_toolbox.ffmpeg_locator import resolve
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Sequence
 
@@ -110,10 +112,23 @@ def _iter_progress_events(
 
 
 class Runner:
-    """Execute an ffmpeg argv, streaming progress with a thread-safe cancel."""
+    """Execute an ffmpeg argv, streaming progress with a thread-safe cancel.
 
-    def __init__(self) -> None:
-        """Create a runner with a clear cancel flag and no live process."""
+    ``run`` expects a flags-only ``argv`` (the first token is an ffmpeg flag,
+    not the binary); the resolved ``ffmpeg`` binary is prepended here, making
+    this the single point in the stack that injects the executable. Pass
+    ``binary`` to override resolution (unit tests use it to run a fake script).
+    """
+
+    def __init__(self, *, binary: str | None = None) -> None:
+        """Create a runner with a clear cancel flag and no live process.
+
+        Args:
+            binary: Optional executable prepended instead of the resolved
+                ``ffmpeg`` (test seam). When ``None``, the ffmpeg_locator
+                resolves it on every ``run``.
+        """
+        self._binary = binary
         self._cancel_event = threading.Event()
         self._lock = threading.Lock()
         self._proc: subprocess.Popen[bytes] | None = None
@@ -127,7 +142,10 @@ class Runner:
         on_progress: Callable[[ProgressEvent], None] | None = None,
     ) -> RunResult:
         """Run ``argv`` to completion (or cancellation) and report the result."""
-        full_argv = [*argv, *_PROGRESS_FLAGS]
+        binary = (
+            self._binary if self._binary is not None else str(resolve("ffmpeg").path)
+        )
+        full_argv = [binary, *argv, *_PROGRESS_FLAGS]
         self._cancel_event.clear()
         started = time.monotonic()
         events: list[ProgressEvent] = []

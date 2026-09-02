@@ -51,8 +51,8 @@ def test_progress_parsing_last_out_time_and_end(tmp_path: Path) -> None:
     )
     received: list[ProgressEvent] = []
 
-    result = Runner().run(
-        [str(_script(tmp_path, body))], duration=6.0, on_progress=received.append
+    result = Runner(binary=str(_script(tmp_path, body))).run(
+        [], duration=6.0, on_progress=received.append
     )
 
     assert result.exit_code == 0
@@ -74,7 +74,7 @@ def test_out_time_ms_compatibility(tmp_path: Path) -> None:
     """Given an out_time_ms block; then it is interpreted as milliseconds."""
     body = "printf 'out_time_ms=2500\\nprogress=end\\n'\n"
 
-    result = Runner().run([str(_script(tmp_path, body))], duration=10.0)
+    result = Runner(binary=str(_script(tmp_path, body))).run([], duration=10.0)
 
     assert result.exit_code == 0
     assert result.last_out_time == pytest.approx(2.5)
@@ -88,7 +88,7 @@ def test_out_time_us_preferred_over_ms_quirk(tmp_path: Path) -> None:
         "printf 'out_time_us=3990748\\nout_time_ms=3990748\\nprogress=end\\n'\n"
     )
 
-    result = Runner().run([str(_script(tmp_path, body))], duration=4.0)
+    result = Runner(binary=str(_script(tmp_path, body))).run([], duration=4.0)
 
     assert result.last_out_time == pytest.approx(3.990748)
     assert result.progress_events[0].out_time == pytest.approx(3.990748)
@@ -96,7 +96,7 @@ def test_out_time_us_preferred_over_ms_quirk(tmp_path: Path) -> None:
 
 def test_normal_completion_exit_zero(tmp_path: Path) -> None:
     """Given a script that exits 0 with no progress; then a clean result."""
-    result = Runner().run([str(_script(tmp_path, "exit 0"))])
+    result = Runner(binary=str(_script(tmp_path, "exit 0"))).run([])
 
     assert result.exit_code == 0
     assert result.cancelled is False
@@ -108,9 +108,9 @@ def test_normal_completion_exit_zero(tmp_path: Path) -> None:
 
 def test_nonzero_exit_captures_stderr_tail(tmp_path: Path) -> None:
     """Given exit 1 with a stderr diagnostic; then it lands in error + tail."""
-    result = Runner().run(
-        [str(_script(tmp_path, "echo 'ERROR: something broke' >&2\nexit 1"))]
-    )
+    result = Runner(
+        binary=str(_script(tmp_path, "echo 'ERROR: something broke' >&2\nexit 1"))
+    ).run([])
 
     assert result.exit_code == 1
     assert result.error is not None
@@ -122,11 +122,11 @@ def test_cancel_terminates_hung_process(tmp_path: Path) -> None:
     """Given a sleeping child; then cancel terminates it within the grace."""
     ready = tmp_path / "ready"
     script = _script(tmp_path, f"touch {ready}\nexec sleep 30")
-    runner = Runner()
+    runner = Runner(binary=str(script))
     result: dict[str, RunResult] = {}
 
     def target() -> None:
-        result["value"] = runner.run([str(script)])
+        result["value"] = runner.run([])
 
     thread = threading.Thread(target=target)
     thread.start()
@@ -147,11 +147,11 @@ def test_cancel_kills_process_that_ignores_sigterm(tmp_path: Path) -> None:
     """Given a child that ignores SIGTERM; then cancel kills it after grace."""
     ready = tmp_path / "ready"
     script = _script(tmp_path, f"trap '' TERM\ntouch {ready}\nwhile :; do :; done")
-    runner = Runner()
+    runner = Runner(binary=str(script))
     result: dict[str, RunResult] = {}
 
     def target() -> None:
-        result["value"] = runner.run([str(script)])
+        result["value"] = runner.run([])
 
     thread = threading.Thread(target=target)
     thread.start()
@@ -181,8 +181,8 @@ def test_stdin_bytes_passed_to_child(tmp_path: Path) -> None:
         "fi\n"
     )
 
-    result = Runner().run(
-        [str(_script(tmp_path, body))], stdin_bytes=b"file '/tmp/a.mp4'\n"
+    result = Runner(binary=str(_script(tmp_path, body))).run(
+        [], stdin_bytes=b"file '/tmp/a.mp4'\n"
     )
 
     assert result.exit_code == 0
@@ -193,8 +193,8 @@ def test_progress_flags_appended_to_argv(tmp_path: Path) -> None:
     """Given any argv; then -progress pipe:1 -nostats are appended, argv intact."""
     body = 'for a in "$@"; do echo "ARG:$a" >&2; done\nexit 0\n'
 
-    result = Runner().run(
-        [str(_script(tmp_path, body)), "-i", "in.mp4", "out.mp4"]
+    result = Runner(binary=str(_script(tmp_path, body))).run(
+        ["-i", "in.mp4", "out.mp4"]
     )
 
     assert result.exit_code == 0

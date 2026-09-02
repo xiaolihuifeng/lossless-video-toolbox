@@ -27,7 +27,14 @@ _COVER_MIMETYPES: Final[dict[str, str]] = {
 
 @lru_cache(maxsize=1)
 def ffmpeg_path() -> str:
-    """Return the resolved ffmpeg binary path (cached across the process)."""
+    """Return the resolved ffmpeg binary path (cached across the process).
+
+    Only the standalone chapter-export helper ``to_ffmetadata`` (ffmetadata.py)
+    uses this — it builds a full argv (binary included) for direct subprocess
+    use, not a spec. Operation specs now produce flags-only argv; the
+    :class:`~lossless_toolbox.runner.Runner` is the single point that prepends
+    the resolved binary.
+    """
     return str(resolve("ffmpeg").path)
 
 

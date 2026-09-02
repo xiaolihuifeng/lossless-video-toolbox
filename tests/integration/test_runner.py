@@ -9,7 +9,6 @@ probes as the expected duration.
 
 from __future__ import annotations
 
-import shutil
 from typing import TYPE_CHECKING
 
 import pytest
@@ -28,12 +27,6 @@ if TYPE_CHECKING:
         duration: float
 
 pytestmark = pytest.mark.integration
-
-
-def _ffmpeg() -> str:
-    binary = shutil.which("ffmpeg")
-    assert binary is not None, "ffmpeg not found on PATH"
-    return binary
 
 
 def test_runner_cut_h264_progress_monotonic_and_duration(
@@ -56,7 +49,7 @@ def test_runner_cut_h264_progress_monotonic_and_duration(
 
     received: list[ProgressEvent] = []
     result = Runner().run(
-        [_ffmpeg(), *plan.argv], duration=expected, on_progress=received.append
+        plan.argv, duration=expected, on_progress=received.append
     )
 
     assert result.exit_code == 0, result.error

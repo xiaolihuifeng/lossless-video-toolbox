@@ -51,8 +51,7 @@ def test_metadata_edit_full_argv() -> None:
         creation_time="2024-01-01T00:00:00Z",
     )
     argv = spec.build_argv()
-    _assert_binary(argv)
-    assert argv[1:] == [
+    assert argv == [
         *_BASE,
         "-i", "in.mp4",
         "-metadata", "title=My Movie",
@@ -66,7 +65,7 @@ def test_metadata_edit_full_argv() -> None:
 def test_metadata_edit_minimal_argv() -> None:
     """Given no optional fields; then argv degrades to a plain stream copy."""
     spec = MetadataEditSpec(in_path=_IN, out_path=_OUT)
-    assert spec.build_argv()[1:] == [
+    assert spec.build_argv() == [
         *_BASE, "-i", "in.mp4", "-c", "copy", "out.mp4",
     ]
 
@@ -131,7 +130,6 @@ def test_chapters_spec_writes_temp_file_and_builds_argv() -> None:
     ffmeta_path: Path | None = None
     try:
         argv = spec.build_argv()
-        _assert_binary(argv)
         inputs = [argv[i + 1] for i, arg in enumerate(argv) if arg == "-i"]
         assert inputs[0] == "in.mp4"
         ffmeta_path = Path(inputs[1])
@@ -155,11 +153,10 @@ def test_rotate_mp4_argv_90() -> None:
     """Given degrees=90 on MP4; then -display_rotation 270 precedes -i."""
     spec = RotateSpec(in_path=_IN, out_path=_OUT, degrees=90)
     argv = spec.build_argv()
-    _assert_binary(argv)
     rotation_index = argv.index("-display_rotation:v:0")
     assert argv[rotation_index + 1] == "270"
     assert rotation_index < argv.index("-i")
-    assert argv[1:] == [
+    assert argv == [
         *_BASE,
         "-display_rotation:v:0", "270",
         "-i", "in.mp4",
@@ -196,8 +193,7 @@ def test_cover_mp4_argv() -> None:
     """Given an MP4 target; then attached_pic disposition argv is produced."""
     spec = CoverSpec(in_path=_IN, out_path=_OUT, image_path=Path("cover.png"))
     argv = spec.build_argv()
-    _assert_binary(argv)
-    assert argv[1:] == [
+    assert argv == [
         *_BASE,
         "-i", "in.mp4",
         "-i", "cover.png",
