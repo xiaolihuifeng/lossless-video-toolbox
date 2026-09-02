@@ -1,0 +1,205 @@
+# CI build for the Windows release of the Lossless Toolbox.
+#
+# Runs only on demand (workflow_dispatch) or when a v* tag is pushed. The job
+# runs on a `windows-latest` hosted runner (x64, Python 3.12) and produces:
+#
+#   1. dist/lossless-toolbox/           PyInstaller onedir (windowed GUI exe)
+#   2. lossless-toolbox-windows-x64.zip same onedir tree, uploaded as the
+#                                       `lossless-toolbox-windows-x64` artifact
+#   3. lossless-toolbox-setup-0.1.0.exe NSIS installer, uploaded as the
+#                                       `lossless-toolbox-windows-installer`
+#                                       artifact
+#
+# ffmpeg/ffprobe are the static gyan.dev "essentials" release builds, pulled
+# from the maintainer's own GitHub mirror (GyanD/codexffmpeg) whose per-asset
+# digest matches the .sha256 published on gyan.dev. The zip is SHA-256 pinned
+# in the job env below and verified with Get-FileHash before a single byte
+# lands in resources/bin — a tampered or drifted download aborts the job.
+#
+# SIGNING NOTE (intentional gap, do not "fix" by self-signing):
+#   None of the produced binaries is code-signed. Windows SmartScreen will
+#   therefore show "Windows protected your PC" the first time a user runs the
+#   installer or the extracted lossless-toolbox.exe; they must click
+#   "More info" -> "Run anyway". Real signing (Azure Trusted Signing / an EV
+#   code-signing certificate) is out of scope for this todo and is not faked.
+#   The last step echoes the warning into the Actions log.
+
+name: build-windows
+
+# "on" is quoted so yaml.safe_load (PyYAML, YAML 1.1) keeps the key a string;
+# GitHub Actions parses the quoted form identically.
+"on":
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-windows:
+    name: Build Windows installer (x64)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      # gyan.dev essentials release build 9.0.1 (2026-08-12); the versioned
+      # asset is immutable on the mirror, so this pin stays valid until we
+      # deliberately bump FFMPEG_VERSION + FFMPEG_SHA256 together.
+      FFMPEG_VERSION: "9.0.1"
+      FFMPEG_SHA256: "fec81ae03971d9dd4be3ebe02e263bd2ec1d789483f931bdba5f5715e65da2e9"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install package with dev extras
+        run: python -m pip install -e ".[dev]"
+
+      - name: Confirm PyInstaller spec is present
+        shell: pwsh
+        run: |
+          $spec = 'packaging/lossless-toolbox.spec'
+          if (-not (Test-Path $spec)) {
+            throw "Spec not found at $spec - packaging/lossless-toolbox.spec must be committed before this job runs."
+          }
+          Write-Host "Using spec: $spec"
+          Get-Content $spec -TotalCount 2
+
+      - name: Download pinned gyan.dev essentials ffmpeg/ffprobe and verify SHA-256
+        shell: pwsh
+        run: |
+          $version = $env:FFMPEG_VERSION
+          $expected = $env:FFMPEG_SHA256
+          $archive = "ffmpeg-$version-essentials_build.zip"
+          $url = "https://github.com/GyanD/codexffmpeg/releases/download/$version/$archive"
+          $zip = Join-Path $env:RUNNER_TEMP $archive
+          Write-Host "Downloading $url"
+          Invoke-WebRequest -Uri $url -OutFile $zip
+          $actual = (Get-FileHash -Path $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) {
+            throw "SHA-256 mismatch for $archive`nexpected: $expected`nactual:   $actual"
+          }
+          Write-Host "SHA-256 verified: $actual"
+
+          $extract = Join-Path $env:RUNNER_TEMP "ffmpeg-$version-essentials"
+          Expand-Archive -Path $zip -DestinationPath $extract -Force
+          $ffmpeg = Get-ChildItem -Path $extract -Recurse -Filter 'ffmpeg.exe' | Select-Object -First 1
+          $ffprobe = Get-ChildItem -Path $extract -Recurse -Filter 'ffprobe.exe' | Select-Object -First 1
+          if (-not $ffmpeg -or -not $ffprobe) {
+            throw 'ffmpeg.exe / ffprobe.exe not found inside the downloaded archive'
+          }
+          New-Item -ItemType Directory -Force -Path 'resources/bin' | Out-Null
+          Copy-Item -LiteralPath $ffmpeg.FullName -Destination 'resources/bin/ffmpeg.exe' -Force
+          Copy-Item -LiteralPath $ffprobe.FullName -Destination 'resources/bin/ffprobe.exe' -Force
+          Write-Host 'Bundled binaries staged under resources/bin:'
+          Get-ChildItem 'resources/bin' | Select-Object Name, Length
+
+      - name: Build with PyInstaller (packaging/lossless-toolbox.spec)
+        shell: pwsh
+        run: |
+          # The spec branches on sys.platform == 'win32' internally and uses
+          # console=False (windowed), so the same spec file builds Linux and
+          # Windows; only the add-binary suffix changes to .exe here.
+          python -m PyInstaller --noconfirm --clean packaging/lossless-toolbox.spec
+          $root = 'dist/lossless-toolbox'
+          if (-not (Test-Path (Join-Path $root 'lossless-toolbox.exe'))) {
+            throw "lossless-toolbox.exe missing under $root"
+          }
+          $bundled = Get-ChildItem -Path $root -Recurse -Filter 'ffmpeg.exe'
+          if (-not $bundled) {
+            throw 'Bundled ffmpeg.exe not found under dist/lossless-toolbox'
+          }
+          Write-Host 'PyInstaller onedir top level:'
+          Get-ChildItem $root | Select-Object -ExpandProperty Name
+
+      - name: Package portable zip
+        shell: pwsh
+        run: |
+          $zip = 'lossless-toolbox-windows-x64.zip'
+          if (Test-Path $zip) {
+            Remove-Item $zip -Force
+          }
+          Compress-Archive -Path 'dist/lossless-toolbox' -DestinationPath $zip -CompressionLevel Optimal
+          Get-Item $zip | Select-Object Name, Length
+
+      - name: Upload portable zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lossless-toolbox-windows-x64
+          path: lossless-toolbox-windows-x64.zip
+          if-no-files-found: error
+
+      - name: Install makensis (NSIS) via chocolatey
+        shell: pwsh
+        run: choco install makensis -y --no-progress
+
+      - name: Build NSIS installer (unsigned)
+        shell: pwsh
+        run: |
+          $env:Path = [System.Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + $env:Path
+          $makensis = Get-Command makensis -ErrorAction SilentlyContinue
+          if (-not $makensis) {
+            $candidate = Get-ChildItem 'C:\ProgramData\chocolatey\lib\makensis\tools' -Recurse -Filter 'makensis.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+            if (-not $candidate) {
+              throw 'makensis not found after choco install - PATH refresh failed'
+            }
+            $makensis = $candidate
+          }
+          $makensisPath = if ($makensis.PSObject.Properties.Name -contains 'Source') { $makensis.Source } else { $makensis.FullName }
+          Write-Host "makensis: $makensisPath"
+
+          # The NSIS script is embedded as wrapped base64 so the YAML literal
+          # block keeps a uniform 10-space indent (no here-string closing tag
+          # sitting in column 0). Whitespace/newlines are stripped on decode.
+          $nsiB64 = 'OyBMb3NzbGVzcyBUb29sYm94IGluc3RhbGxlciAtIGdlbmVyYXRlZCBieSAuZ2l0aHViL3dvcmtmbG93cy9idWlsZC13aW5k'
+            + 'b3dzLnltbAo7IFByb2R1Y2VkIHdpdGggbWFrZW5zaXMgb24gdGhlIEdpdEh1YiBBY3Rpb25zIHdpbmRvd3MtbGF0ZXN0IHJ1'
+            + 'bm5lci4KIWRlZmluZSBBUFBfTkFNRSAiTG9zc2xlc3MgVG9vbGJveCIKIWRlZmluZSBBUFBfVkVSU0lPTiAiMC4xLjAiCiFk'
+            + 'ZWZpbmUgQVBQX0VYRSAibG9zc2xlc3MtdG9vbGJveC5leGUiCiFkZWZpbmUgVU5JTlNUX0tFWSAiU29mdHdhcmVcTWljcm9z'
+            + 'b2Z0XFdpbmRvd3NcQ3VycmVudFZlcnNpb25cVW5pbnN0YWxsXExvc3NsZXNzVG9vbGJveCIKCk5hbWUgIiR7QVBQX05BTUV9'
+            + 'ICR7QVBQX1ZFUlNJT059IgpPdXRGaWxlICIke09VVEZJTEV9IgpVbmljb2RlIFRydWUKSW5zdGFsbERpciAiJFBST0dSQU1G'
+            + 'SUxFUzY0XExvc3NsZXNzIFRvb2xib3giCkluc3RhbGxEaXJSZWdLZXkgSEtDVSAiJHtVTklOU1RfS0VZfSIgIkluc3RhbGxE'
+            + 'aXIiClJlcXVlc3RFeGVjdXRpb25MZXZlbCB1c2VyCgpQYWdlIGRpcmVjdG9yeQpQYWdlIGluc3RmaWxlcwpVbmluc3RQYWdl'
+            + 'IHVuaW5zdENvbmZpcm0KVW5pbnN0UGFnZSBpbnN0ZmlsZXMKClNlY3Rpb24gIkluc3RhbGwiCiAgU2V0T3V0UGF0aCAiJElO'
+            + 'U1RESVIiCiAgRmlsZSAvciAiJHtTUkNESVJ9XCoiCiAgV3JpdGVVbmluc3RhbGxlciAiJElOU1RESVJcdW5pbnN0YWxsLmV4'
+            + 'ZSIKICBDcmVhdGVEaXJlY3RvcnkgIiRTTVBST0dSQU1TXExvc3NsZXNzIFRvb2xib3giCiAgQ3JlYXRlU2hvcnRjdXQgIiRT'
+            + 'TVBST0dSQU1TXExvc3NsZXNzIFRvb2xib3hcTG9zc2xlc3MgVG9vbGJveC5sbmsiICIkSU5TVERJUlwke0FQUF9FWEV9Igog'
+            + 'IFdyaXRlUmVnU3RyIEhLQ1UgIiR7VU5JTlNUX0tFWX0iICJEaXNwbGF5TmFtZSIgIiR7QVBQX05BTUV9IgogIFdyaXRlUmVn'
+            + 'U3RyIEhLQ1UgIiR7VU5JTlNUX0tFWX0iICJEaXNwbGF5VmVyc2lvbiIgIiR7QVBQX1ZFUlNJT059IgogIFdyaXRlUmVnU3Ry'
+            + 'IEhLQ1UgIiR7VU5JTlNUX0tFWX0iICJQdWJsaXNoZXIiICJMb3NzbGVzcyBUb29sYm94IgogIFdyaXRlUmVnU3RyIEhLQ1Ug'
+            + 'IiR7VU5JTlNUX0tFWX0iICJJbnN0YWxsRGlyIiAiJElOU1RESVIiCiAgV3JpdGVSZWdTdHIgSEtDVSAiJHtVTklOU1RfS0VZ'
+            + 'fSIgIlVuaW5zdGFsbFN0cmluZyIgJyIkSU5TVERJUlx1bmluc3RhbGwuZXhlIicKU2VjdGlvbkVuZAoKU2VjdGlvbiAiVW5p'
+            + 'bnN0YWxsIgogIERlbGV0ZSAiJElOU1RESVJcdW5pbnN0YWxsLmV4ZSIKICBEZWxldGUgIiRTTVBST0dSQU1TXExvc3NsZXNz'
+            + 'IFRvb2xib3hcTG9zc2xlc3MgVG9vbGJveC5sbmsiCiAgUk1EaXIgIiRTTVBST0dSQU1TXExvc3NsZXNzIFRvb2xib3giCiAg'
+            + 'Uk1EaXIgL3IgIiRJTlNURElSIgogIERlbGV0ZVJlZ0tleSBIS0NVICIke1VOSU5TVF9LRVl9IgpTZWN0aW9uRW5kCg=='
+          $nsi = [System.Text.Encoding]::ASCII.GetString(
+            [System.Convert]::FromBase64String($nsiB64)
+          )
+          $nsiPath = Join-Path $env:RUNNER_TEMP 'lossless-toolbox.nsi'
+          Set-Content -Path $nsiPath -Value $nsi -Encoding ascii
+          $srcDir = (Resolve-Path 'dist/lossless-toolbox').Path
+          $outFile = Join-Path (Get-Location) 'lossless-toolbox-setup-0.1.0.exe'
+          & $makensisPath "/DSRCDIR=`"$srcDir`"" "/DOUTFILE=`"$outFile`"" $nsiPath
+          if ($LASTEXITCODE -ne 0) {
+            throw "makensis failed with exit code $LASTEXITCODE"
+          }
+          Write-Host 'NSIS installer built:'
+          Get-Item $outFile | Select-Object Name, Length
+      - name: Upload NSIS installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lossless-toolbox-windows-installer
+          path: lossless-toolbox-setup-*.exe
+          if-no-files-found: error
+
+      - name: Print SmartScreen notice (unsigned build)
+        shell: pwsh
+        run: |
+          Write-Host ''
+          Write-Host 'NOTE: this build is NOT code-signed (no self-signed cert either).'
+          Write-Host 'Windows SmartScreen will show "Windows protected your PC" when the'
+          Write-Host 'installer or lossless-toolbox.exe is first run; the user must click'
+          Write-Host '"More info" -> "Run anyway". Signing is tracked as a separate task.'
