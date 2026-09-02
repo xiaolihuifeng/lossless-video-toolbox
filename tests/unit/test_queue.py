@@ -3,8 +3,8 @@
 A scripted fake runner (success / fail / hang / block / raise outcomes) is
 injected so the full state machine is exercised with no real process: every
 ``queued -> running -> done|failed|cancelled`` transition, the
-failure-continue rule (F2), cancel propagation, id stability, dynamic submit
-and callback ordering.
+failure-continue rule (F2), cancel propagation, id stability, dynamic submit,
+callback ordering and the spec->runner media-duration plumbing (F2-M1).
 """
 
 from __future__ import annotations
@@ -30,18 +30,25 @@ class _FakeRunner:
         self,
         outcomes: list[str],
         log: list[tuple[str, tuple[str, ...]]],
+        durations: list[float | None],
         cancel_event: threading.Event,
         release_event: threading.Event,
     ) -> None:
         self._outcomes = outcomes
         self._log = log
+        self._durations = durations
         self._cancel_event = cancel_event
         self._release_event = release_event
 
     def run(
-        self, argv: list[str], *, stdin_bytes: bytes | None = None
+        self,
+        argv: list[str],
+        *,
+        stdin_bytes: bytes | None = None,
+        duration: float | None = None,
     ) -> RunResult:
         self._log.append(("run", tuple(argv)))
+        self._durations.append(duration)
         outcome = self._outcomes.pop(0)
         if outcome == "success":
             return RunResult(exit_code=0)
@@ -71,6 +78,7 @@ class _Harness:
 
     queue: JobQueue[str]
     log: list[tuple[str, tuple[str, ...]]]
+    durations: list[float | None]
     cancel_event: threading.Event
     release_event: threading.Event
 
@@ -89,11 +97,12 @@ def _harness(
     argv_builder: Callable[[str], list[str]] | None = None,
 ) -> _Harness:
     log: list[tuple[str, tuple[str, ...]]] = []
+    durations: list[float | None] = []
     cancel_event = threading.Event()
     release_event = threading.Event()
 
     def factory() -> _FakeRunner:
-        return _FakeRunner(outcomes, log, cancel_event, release_event)
+        return _FakeRunner(outcomes, log, durations, cancel_event, release_event)
 
     if argv_builder is None:
         argv_builder = _identity_argv
@@ -105,7 +114,7 @@ def _harness(
         on_job_finished=on_job_finished,
         on_all_done=on_all_done,
     )
-    return _Harness(queue, log, cancel_event, release_event)
+    return _Harness(queue, log, durations, cancel_event, release_event)
 
 
 def _run_async(queue: JobQueue[str]) -> threading.Thread:
@@ -315,3 +324,97 @@ def test_cancel_with_no_running_job_is_noop() -> None:
     harness.queue.cancel_current()
     harness.queue.cancel_all()
     assert harness.queue.is_running is False
+
+
+@dataclass(frozen=True)
+class _DurSpec:
+    """A job spec carrying a probed media duration (F2-M1 plumbing)."""
+
+    name: str
+    duration: float | None = None
+
+
+@dataclass(frozen=True)
+class _StdinDurSpec:
+    """A spec carrying both a stdin payload and a media duration."""
+
+    name: str
+    duration: float
+
+    def build_stdin_data(self) -> bytes:
+        return f"file '{self.name}'\n".encode()
+
+
+@dataclass(frozen=True)
+class _NoDurSpec:
+    """A job spec without any duration attribute at all."""
+
+    name: str
+
+
+class _Recorder:
+    """Minimal Runner-protocol recorder: argv token, stdin and duration."""
+
+    def __init__(
+        self, calls: list[tuple[str, bytes | None, float | None]]
+    ) -> None:
+        self._calls = calls
+
+    def run(
+        self,
+        argv: list[str],
+        *,
+        stdin_bytes: bytes | None = None,
+        duration: float | None = None,
+    ) -> RunResult:
+        self._calls.append((argv[0], stdin_bytes, duration))
+        return RunResult(exit_code=0)
+
+    def cancel(self) -> None:
+        """Not exercised by the plumbing tests."""
+
+
+def _plumbed_queue(
+    calls: list[tuple[str, bytes | None, float | None]],
+) -> JobQueue[object]:
+    """A queue whose runner records the (argv, stdin, duration) triple."""
+
+    def factory() -> _Recorder:
+        return _Recorder(calls)
+
+    return JobQueue[object](
+        runner_factory=factory,
+        argv_builder=lambda spec: [spec.name],
+    )
+
+
+def test_spec_duration_is_forwarded_to_runner() -> None:
+    """Given specs with known and unknown duration; then the runner gets both."""
+    calls: list[tuple[str, bytes | None, float | None]] = []
+    queue = _plumbed_queue(calls)
+    queue.submit([_DurSpec("known.mp4", 12.5), _DurSpec("unknown.mp4")])
+    queue.run()
+
+    assert [call[2] for call in calls] == [12.5, None]
+
+
+def test_nonpositive_or_absent_duration_stays_none() -> None:
+    """Given zero/negative/absent durations; then the runner receives None."""
+    calls: list[tuple[str, bytes | None, float | None]] = []
+    queue = _plumbed_queue(calls)
+    queue.submit(
+        [_DurSpec("zero.mp4", 0.0), _DurSpec("neg.mp4", -3.0), _NoDurSpec("bare.mp4")]
+    )
+    queue.run()
+
+    assert [call[2] for call in calls] == [None, None, None]
+
+
+def test_duration_forwarded_together_with_stdin_bytes() -> None:
+    """Given a stdin-feeding spec with a duration; then both reach the runner."""
+    calls: list[tuple[str, bytes | None, float | None]] = []
+    queue = _plumbed_queue(calls)
+    queue.submit([_StdinDurSpec("a.mp4", 7.25)])
+    queue.run()
+
+    assert calls == [("a.mp4", b"file 'a.mp4'\n", 7.25)]

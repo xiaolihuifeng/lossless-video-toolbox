@@ -186,6 +186,7 @@ class MetaPanel(OperationPanel):
                 out_path=out_path,
                 title=self._title_edit.text().strip() or None,
                 language_map=language_map(self._lang_table) or None,
+                duration=media.duration,
             )
         if mode == "chapters":
             error = chapters_error(self._chapter_table)
@@ -195,6 +196,7 @@ class MetaPanel(OperationPanel):
                 in_path=media.path,
                 out_path=out_path,
                 chapters=parse_chapters(self._chapter_table),
+                duration=media.duration,
             )
         if mode == "rotate":
             if not self._rotation_allowed():
@@ -203,6 +205,7 @@ class MetaPanel(OperationPanel):
                 in_path=media.path,
                 out_path=out_path,
                 degrees=int(self._rotate_combo.currentData()),
+                duration=media.duration,
             )
         error = self._cover_error(entry)
         if error is not None:
@@ -211,6 +214,7 @@ class MetaPanel(OperationPanel):
             in_path=media.path,
             out_path=out_path,
             image_path=Path(self._cover_edit.text().strip()),
+            duration=media.duration,
         )
 
     def _add_language_row(

@@ -68,7 +68,8 @@ class ExtractSpec(BaseModel):
     """Extract a single audio stream to a standalone file (lossless copy).
 
     ``stream_index`` indexes the AUDIO streams of ``in_path`` (the ``N`` in
-    ``-map 0:a:N``), not the global stream table.
+    ``-map 0:a:N``), not the global stream table. ``duration`` is the probed
+    media duration used only for progress scaling (never in the argv).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -78,6 +79,7 @@ class ExtractSpec(BaseModel):
     stream_index: int = Field(default=0, ge=0)
     out_path: Path
     streams: list[StreamInfo]
+    duration: float | None = None
 
     def build_argv(self) -> list[str]:
         """Build the extract argv, rejecting an out-of-range audio index.
@@ -103,7 +105,11 @@ class ExtractSpec(BaseModel):
 
 
 class StripSpec(BaseModel):
-    """Keep only the requested streams, copying each one losslessly."""
+    """Keep only the requested streams, copying each one losslessly.
+
+    ``duration`` is the probed media duration used only for progress scaling
+    (never in the argv).
+    """
 
     model_config = ConfigDict(frozen=True)
 
@@ -112,6 +118,7 @@ class StripSpec(BaseModel):
     out_path: Path
     keep_streams: list[int]
     streams: list[StreamInfo]
+    duration: float | None = None
 
     def build_argv(self) -> list[str]:
         """Build the strip argv, rejecting empty or out-of-range keeps.

@@ -16,9 +16,11 @@ from typing import TYPE_CHECKING, Protocol
 
 import pytest
 
+from lossless_toolbox.ops.cut import CutSpec
 from lossless_toolbox.ops.remux import RemuxSpec
-from lossless_toolbox.probe import probe
+from lossless_toolbox.probe import keyframes, probe
 from lossless_toolbox.queue import JobQueue, RunResult
+from lossless_toolbox.runner import Runner
 
 pytestmark = pytest.mark.integration
 
@@ -41,7 +43,11 @@ class _SubprocessRunner:
         self._ffmpeg = ffmpeg
 
     def run(
-        self, argv: list[str], *, stdin_bytes: bytes | None = None
+        self,
+        argv: list[str],
+        *,
+        stdin_bytes: bytes | None = None,
+        duration: float | None = None,
     ) -> RunResult:
         proc = subprocess.run(  # noqa: S603 - argv from ops engine, no shell
             [self._ffmpeg, *argv],
@@ -109,3 +115,55 @@ def test_batch_remux_bad_middle_file_survives(
     assert out1.is_file()
     assert not out2.exists()
     assert out3.is_file()
+
+
+def test_queue_forwards_cut_duration_to_real_runner(
+    tmp_path: Path, h264_aac_mp4: _MediaSample
+) -> None:
+    """Given a CutSpec through the queue; then the real runner gets its duration.
+
+    Proves the full production chain (queue -> spec duration -> real
+    ``Runner.run``) with a genuine ffmpeg process: the job finishes and the
+    cut output exists, while the recorded duration equals the probed media
+    duration the spec carries (F2-M1).
+    """
+    source = probe(h264_aac_mp4.path)
+    kf = keyframes(h264_aac_mp4.path)
+    out = tmp_path / "cut.mkv"
+    spec = CutSpec(
+        in_path=h264_aac_mp4.path,
+        start=1.0,
+        end=5.0,
+        out_path=out,
+        keyframe_index=kf.times,
+        duration=source.duration,
+    )
+    received: list[float | None] = []
+
+    class _RecordingRunner:
+        def __init__(self, inner: Runner) -> None:
+            self._inner = inner
+
+        def run(
+            self,
+            argv: list[str],
+            *,
+            stdin_bytes: bytes | None = None,
+            duration: float | None = None,
+        ) -> RunResult:
+            received.append(duration)
+            return self._inner.run(argv, stdin_bytes=stdin_bytes, duration=duration)
+
+        def cancel(self) -> None:
+            self._inner.cancel()
+
+    queue = JobQueue[CutSpec](
+        runner_factory=lambda: _RecordingRunner(Runner()),
+        argv_builder=CutSpec.build_argv,
+    )
+    queue.submit([spec])
+    result = queue.run()
+
+    assert result[0].status == "done"
+    assert received == [source.duration]
+    assert out.is_file()

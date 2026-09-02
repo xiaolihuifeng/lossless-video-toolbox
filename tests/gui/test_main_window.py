@@ -62,6 +62,7 @@ class _FakeProgressRunner:
         self._exit_code = exit_code
         self._stderr_tail = stderr_tail
         self.argv: list[str] = []
+        self.duration: float | None = None
         self.cancel_called = False
 
     def run(
@@ -70,8 +71,10 @@ class _FakeProgressRunner:
         *,
         on_progress: Callable[[ProgressEvent], None] | None = None,
         stdin_bytes: bytes | None = None,
+        duration: float | None = None,
     ) -> RunResult:
         self.argv = list(argv)
+        self.duration = duration
         for event in self._events:
             if on_progress is not None:
                 on_progress(event)

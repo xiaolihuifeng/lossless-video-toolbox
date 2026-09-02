@@ -9,8 +9,10 @@ strengths: :meth:`JobQueue.cancel_current` stops only the running job (the rest
 of the batch still runs), while :meth:`JobQueue.cancel_all` also clears every
 remaining queued job. A spec may expose ``build_stdin_data()``; its bytes are
 passed to the runner as ``stdin_bytes`` (the concat-demuxer merge feeds its
-file list this way). All shared state is lock-guarded so submit/cancel may be
-called from any thread while :meth:`JobQueue.run` executes in another.
+file list this way), and a spec carrying a known ``duration`` has it passed to
+the runner so streamed progress scales against the media length. All shared
+state is lock-guarded so submit/cancel may be called from any thread while
+:meth:`JobQueue.run` executes in another.
 """
 
 from __future__ import annotations
@@ -56,10 +58,16 @@ class Runner(Protocol):
     failure signal); ``cancel`` must be safe to call cross-thread.
     ``stdin_bytes`` feeds a spec's stdin payload (e.g. the concat demuxer file
     list for merges); runners that need no stdin simply ignore the keyword.
+    ``duration`` is the job's known media duration in seconds, used to scale
+    streamed progress; ``None`` keeps the runner's indeterminate path.
     """
 
     def run(
-        self, argv: list[str], *, stdin_bytes: bytes | None = None
+        self,
+        argv: list[str],
+        *,
+        stdin_bytes: bytes | None = None,
+        duration: float | None = None,
     ) -> RunResult:
         """Execute ``argv`` to completion and return the exit-code outcome."""
         ...
@@ -78,6 +86,20 @@ def _spec_stdin_bytes(spec: object) -> bytes | None:
     """
     builder = getattr(spec, "build_stdin_data", None)
     return cast("bytes | None", builder()) if callable(builder) else None
+
+
+def _spec_duration(spec: object) -> float | None:
+    """Return ``spec``'s known media duration in seconds, or None.
+
+    Specs built from a probed file carry ``duration`` (e.g. ``CutSpec``'s
+    probed media duration); specs without it — merges, unprobed inputs — yield
+    None so the runner keeps its indeterminate-progress path. Nonpositive
+    values are treated as unknown (a zero duration cannot scale progress).
+    """
+    value = getattr(spec, "duration", None)
+    if isinstance(value, (int, float)) and value > 0:
+        return float(value)
+    return None
 
 
 class JobRecord(BaseModel, Generic[SpecT]):
@@ -259,11 +281,8 @@ class JobQueue(Generic[SpecT]):
         try:
             argv = self._argv_builder(job.spec)
             stdin_bytes = _spec_stdin_bytes(job.spec)
-            result = (
-                runner.run(argv, stdin_bytes=stdin_bytes)
-                if stdin_bytes is not None
-                else runner.run(argv)
-            )
+            duration = _spec_duration(job.spec)
+            result = runner.run(argv, stdin_bytes=stdin_bytes, duration=duration)
         except Exception as exc:  # noqa: BLE001 - job boundary: record, never raise
             job.status = "failed"
             job.error = f"{type(exc).__name__}: {exc}"

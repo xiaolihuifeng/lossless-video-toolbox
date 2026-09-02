@@ -174,7 +174,10 @@ class RemuxSpec(BaseModel):
 
     ``streams`` is the ffprobe result for ``in_path``; it drives the TS
     annex-B bitstream filter and the subtitle compatibility guard, and is
-    provided by the caller so :meth:`build_argv` stays pure.
+    provided by the caller so :meth:`build_argv` stays pure. ``duration`` is
+    the probed media duration in seconds (None when unknown); it never
+    affects the argv — the batch queue only uses it to scale streamed
+    progress.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -182,6 +185,7 @@ class RemuxSpec(BaseModel):
     in_path: Path
     out_path: Path
     streams: list[StreamInfo]
+    duration: float | None = None
 
     @property
     def out_container(self) -> str:

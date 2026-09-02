@@ -65,6 +65,7 @@ class _FakeRunner:
         self._delay = delay
         self._block = block
         self.argv: list[str] = []
+        self.duration: float | None = None
         self.cancel_called = False
 
     def run(
@@ -73,8 +74,10 @@ class _FakeRunner:
         *,
         on_progress: Callable[[ProgressEvent], None] | None = None,
         stdin_bytes: bytes | None = None,
+        duration: float | None = None,
     ) -> RunResult:
         self.argv = list(argv)
+        self.duration = duration
         if self._block is not None:
             self._block.wait(15.0)
         for event in self._events:
@@ -97,10 +100,11 @@ class _FakeRunner:
 
 
 class _DummySpec:
-    """A spec with a name and a parameter-free build_argv."""
+    """A spec with a name, an optional media duration and parameter-free build_argv."""
 
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str, duration: float | None = None) -> None:
         self.in_path = name
+        self.duration = duration
 
     def build_argv(self) -> list[str]:
         return ["-fake"]
@@ -328,3 +332,59 @@ def test_main_window_wires_progress_panel_into_run_flow(
     assert panel._output_dir == tmp_path
     assert "1 成功" in window._summary_label.text()
     _wait_panel_workers(window)
+
+
+def test_job_duration_reaches_runner_and_bars_run_determinate(
+    qtbot: QtBot,
+) -> None:
+    """(F) Spec duration rides queue→adapter→runner; the bars run determinate."""
+    fake = _FakeRunner(events=_events(), delay=0.01)
+    panel = ProgressPanel()
+    qtbot.addWidget(panel)
+    worker = QueueWorker(
+        [_DummySpec("a.mp4", duration=10.0)],
+        runner_factory=lambda: fake,
+        argv_builder=_fake_argv_builder,
+    )
+    panel.attach(worker)
+    mid_run_maxima: list[int] = []
+    worker.job_progress.connect(
+        lambda _job, _event: mid_run_maxima.append(panel.progress_bar.maximum())
+    )
+    done_spy = QSignalSpy(worker.all_done)
+    worker.start()
+    qtbot.waitUntil(lambda: done_spy.count() == 1, timeout=15_000)
+    worker.wait(5_000)
+
+    assert fake.duration == 10.0
+    assert 100 in mid_run_maxima  # left busy mode while the job was running
+    assert panel.row_bar(0) is not None
+    assert panel.row_bar(0).text() == "100%"
+
+
+def test_job_without_duration_keeps_busy_bar(qtbot: QtBot) -> None:
+    """(G) A duration-less spec reaches the runner as None; the bar stays busy."""
+    fake = _FakeRunner(
+        events=[ProgressEvent(out_time=1.0, progress=None)], exit_code=0
+    )
+    panel = ProgressPanel()
+    qtbot.addWidget(panel)
+    worker = QueueWorker(
+        [_DummySpec("b.mp4")],
+        runner_factory=lambda: fake,
+        argv_builder=_fake_argv_builder,
+    )
+    panel.attach(worker)
+    mid_run_maxima: list[int] = []
+    worker.job_progress.connect(
+        lambda _job, _event: mid_run_maxima.append(panel.progress_bar.maximum())
+    )
+    done_spy = QSignalSpy(worker.all_done)
+    worker.start()
+    qtbot.waitUntil(lambda: done_spy.count() == 1, timeout=15_000)
+    worker.wait(5_000)
+
+    assert fake.duration is None
+    assert mid_run_maxima
+    assert all(value == 0 for value in mid_run_maxima)
+    assert panel.row_status(0) == "✓ 成功"

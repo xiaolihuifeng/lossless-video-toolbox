@@ -126,6 +126,7 @@ class TracksPanel(OperationPanel):
                 stream_index=ordinal,
                 out_path=out_path,
                 streams=media.streams,
+                duration=media.duration,
             )
         keep = [
             stream.index
@@ -139,6 +140,7 @@ class TracksPanel(OperationPanel):
             out_path=out_path,
             keep_streams=keep,
             streams=media.streams,
+            duration=media.duration,
         )
 
     def _on_mode_changed(self, _index: int) -> None:

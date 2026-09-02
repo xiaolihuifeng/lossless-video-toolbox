@@ -135,6 +135,8 @@ class MuxSpec(BaseModel):
     The target container is derived from ``out_path``; unsupported
     codec/container pairs are rejected at construction so the UI can offer the
     "keep MKV or accept style loss" choice before any ffmpeg call.
+    ``duration`` is the probed media duration used only for progress scaling
+    (never in the argv).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -145,6 +147,7 @@ class MuxSpec(BaseModel):
     sub_fmt: Literal["srt", "ass", "webvtt"]
     out_path: Path
     transcode_warning: bool = False
+    duration: float | None = None
 
     @model_validator(mode="after")
     def _reject_unsupported_target(self) -> "MuxSpec":
@@ -178,7 +181,9 @@ class DetachSpec(BaseModel):
     """Extract a subtitle stream to a standalone SRT file.
 
     The source codec is not part of the spec (it is probed separately), so the
-    copy-vs-convert decision happens in :meth:`build_argv`.
+    copy-vs-convert decision happens in :meth:`build_argv`. ``duration`` is
+    the probed media duration used only for progress scaling (never in the
+    argv).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -188,6 +193,7 @@ class DetachSpec(BaseModel):
     out_path: Path
     stream_index: int = Field(default=0, ge=0)
     transcode_warning: bool = False
+    duration: float | None = None
 
     def build_argv(self, source_codec: str) -> list[str]:
         """Build the ffmpeg argv and set ``transcode_warning`` accordingly.

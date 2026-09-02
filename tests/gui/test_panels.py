@@ -122,7 +122,10 @@ def test_remux_panel_builds_spec_and_blocks_subtitle_incompat(qtbot: QtBot) -> N
     spec = panel.build_spec(entry, out)
     assert isinstance(spec, RemuxSpec)
     assert spec == RemuxSpec(
-        in_path=entry.path, out_path=out, streams=entry.media.streams
+        in_path=entry.path,
+        out_path=out,
+        streams=entry.media.streams,
+        duration=12.0,
     )
 
     sub_entry = _entry(".mkv", subtitle=True)
@@ -240,7 +243,11 @@ def test_tracks_panel_extract_and_strip_checkboxes(qtbot: QtBot) -> None:
     spec = panel.build_spec(entry, out)
     assert isinstance(spec, ExtractSpec)
     assert spec == ExtractSpec(
-        in_path=entry.path, stream_index=0, out_path=out, streams=entry.media.streams
+        in_path=entry.path,
+        stream_index=0,
+        out_path=out,
+        streams=entry.media.streams,
+        duration=12.0,
     )
     assert panel.output_extension(entry) == ".m4a"
     panel._format_combo.setCurrentIndex(1)
@@ -254,6 +261,7 @@ def test_tracks_panel_extract_and_strip_checkboxes(qtbot: QtBot) -> None:
         out_path=out,
         keep_streams=[0, 1, 2],
         streams=entry.media.streams,
+        duration=12.0,
     )
 
     panel._checks[0].setChecked(False)
@@ -262,6 +270,7 @@ def test_tracks_panel_extract_and_strip_checkboxes(qtbot: QtBot) -> None:
         out_path=out,
         keep_streams=[1, 2],
         streams=entry.media.streams,
+        duration=12.0,
     )
 
     for check in panel._checks:
@@ -287,7 +296,11 @@ def test_subtitle_panel_mux_detach_and_mov_text_warning(
     spec = panel.build_spec(mp4_entry, out)
     assert isinstance(spec, MuxSpec)
     assert spec == MuxSpec(
-        in_path=mp4_entry.path, sub_path=srt, sub_fmt="srt", out_path=out
+        in_path=mp4_entry.path,
+        sub_path=srt,
+        sub_fmt="srt",
+        out_path=out,
+        duration=12.0,
     )
     assert not panel._warning_label.isHidden()
     assert "mov_text" in panel._warning_label.text()
@@ -304,7 +317,9 @@ def test_subtitle_panel_mux_detach_and_mov_text_warning(
     sub_out = Path("/out/clip.srt")
     spec = panel.build_spec(sub_entry, sub_out)
     assert isinstance(spec, DetachSpec)
-    assert spec == DetachSpec(in_path=sub_entry.path, out_path=sub_out, stream_index=0)
+    assert spec == DetachSpec(
+        in_path=sub_entry.path, out_path=sub_out, stream_index=0, duration=12.0
+    )
 
     panel.set_context(mkv_entry)
     assert panel.validation_error(mkv_entry) == "该文件没有字幕流"
@@ -332,7 +347,9 @@ def test_meta_panel_rotation_gated_by_mp4_like_container(qtbot: QtBot) -> None:
     out = Path("/out/clip.mp4")
     spec = panel.build_spec(mp4_entry, out)
     assert isinstance(spec, RotateSpec)
-    assert spec == RotateSpec(in_path=mp4_entry.path, out_path=out, degrees=90)
+    assert spec == RotateSpec(
+        in_path=mp4_entry.path, out_path=out, degrees=90, duration=12.0
+    )
 
     panel._mode_combo.setCurrentIndex(0)
     panel._title_edit.setText("标题")
@@ -344,4 +361,5 @@ def test_meta_panel_rotation_gated_by_mp4_like_container(qtbot: QtBot) -> None:
         out_path=out,
         title="标题",
         language_map={0: "chi"},
+        duration=12.0,
     )

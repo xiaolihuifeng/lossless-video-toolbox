@@ -39,7 +39,11 @@ _ROTATION_VALUES: Final[frozenset[int]] = frozenset({0, 90, 180, 270})
 
 
 class MetadataEditSpec(BaseModel):
-    """Edit container-level title, per-stream language and creation time."""
+    """Edit container-level title, per-stream language and creation time.
+
+    ``duration`` is the probed media duration used only for progress scaling
+    (never in the argv).
+    """
 
     model_config = ConfigDict(frozen=True)
 
@@ -48,6 +52,7 @@ class MetadataEditSpec(BaseModel):
     title: str | None = None
     language_map: dict[int, str] | None = None
     creation_time: str | None = None
+    duration: float | None = None
 
     def build_argv(self) -> list[str]:
         """Build the stream-copy argv injecting the requested metadata."""
@@ -71,7 +76,8 @@ class ChaptersSpec(BaseModel):
 
     :meth:`build_argv` writes the ffmetadata text to a ``delete=False`` temp
     file and returns argv referencing it; call :meth:`cleanup` after the run to
-    remove that temp file (idempotent, safe to call repeatedly).
+    remove that temp file (idempotent, safe to call repeatedly). ``duration``
+    is the probed media duration used only for progress scaling.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -79,6 +85,7 @@ class ChaptersSpec(BaseModel):
     in_path: Path
     out_path: Path
     chapters: list[ChapterArg]
+    duration: float | None = None
 
     _ffmeta_tmp: Path | None = PrivateAttr(default=None)
 
@@ -123,7 +130,8 @@ class RotateSpec(BaseModel):
     ``-display_rotation`` is counter-clockwise, so the emitted value is
     ``360 - degrees``. Rotation is only persisted by the MP4/MOV ``tkhd``
     matrix — Matroska has no standard rotation element, so an MKV target is
-    rejected at construction.
+    rejected at construction. ``duration`` is the probed media duration used
+    only for progress scaling (never in the argv).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -131,6 +139,7 @@ class RotateSpec(BaseModel):
     in_path: Path
     out_path: Path
     degrees: int
+    duration: float | None = None
 
     @field_validator("degrees")
     @classmethod
@@ -161,13 +170,18 @@ class RotateSpec(BaseModel):
 
 
 class CoverSpec(BaseModel):
-    """Embed cover art (MP4/MOV ``attached_pic`` or MKV ``-attach``)."""
+    """Embed cover art (MP4/MOV ``attached_pic`` or MKV ``-attach``).
+
+    ``duration`` is the probed media duration used only for progress scaling
+    (never in the argv).
+    """
 
     model_config = ConfigDict(frozen=True)
 
     in_path: Path
     out_path: Path
     image_path: Path
+    duration: float | None = None
 
     @model_validator(mode="after")
     def _check_target(self) -> Self:

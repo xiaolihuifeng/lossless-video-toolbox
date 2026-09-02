@@ -14,7 +14,8 @@ Worker threads keep every external process off the UI thread:
   Qt signals (``job_started`` / ``job_progress`` / ``job_finished`` /
   ``all_done``). A :class:`RunnerAdapter` adapts the progress-reporting
   :class:`lossless_toolbox.runner.Runner` to the queue's minimal protocol
-  while forwarding each :class:`ProgressEvent` as ``job_progress``.
+  while forwarding each :class:`ProgressEvent` as ``job_progress`` and the
+  job's media duration (when known) into ``Runner.run``.
 """
 
 from __future__ import annotations
@@ -43,8 +44,9 @@ logger = logging.getLogger(__name__)
 class ProgressRunner(Protocol):
     """Structural contract of :class:`lossless_toolbox.runner.Runner`.
 
-    ``run`` executes argv with an optional progress callback and an optional
-    stdin payload (fed to concat-demuxer merges); ``cancel`` is safe to call
+    ``run`` executes argv with an optional progress callback, an optional
+    stdin payload (fed to concat-demuxer merges) and an optional media
+    ``duration`` that scales streamed progress; ``cancel`` is safe to call
     from any thread.
     """
 
@@ -54,6 +56,7 @@ class ProgressRunner(Protocol):
         *,
         on_progress: Callable[[ProgressEvent], None] | None = None,
         stdin_bytes: bytes | None = None,
+        duration: float | None = None,
     ) -> RunResult:
         """Execute ``argv`` to completion and report the run outcome."""
         ...
@@ -77,11 +80,22 @@ class RunnerAdapter:
         self._on_progress = on_progress
 
     def run(
-        self, argv: Sequence[str], *, stdin_bytes: bytes | None = None
+        self,
+        argv: Sequence[str],
+        *,
+        stdin_bytes: bytes | None = None,
+        duration: float | None = None,
     ) -> QueueRunResult:
-        """Run argv via the wrapped runner, keeping only the queue contract."""
+        """Run argv via the wrapped runner, keeping only the queue contract.
+
+        The job's media ``duration`` (None when unknown) is forwarded so the
+        wrapped runner can emit determinate progress fractions.
+        """
         result = self._runner.run(
-            argv, on_progress=self._on_progress, stdin_bytes=stdin_bytes
+            argv,
+            on_progress=self._on_progress,
+            stdin_bytes=stdin_bytes,
+            duration=duration,
         )
         return QueueRunResult(
             exit_code=result.exit_code, stderr_tail=result.stderr_tail

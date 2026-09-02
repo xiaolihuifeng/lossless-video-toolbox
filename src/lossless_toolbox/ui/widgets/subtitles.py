@@ -164,7 +164,10 @@ class SubtitlePanel(OperationPanel):
             if ordinal < 0:
                 raise PanelError(_NO_SUB_STREAM_MSG)
             return DetachSpec(
-                in_path=media.path, stream_index=ordinal, out_path=out_path
+                in_path=media.path,
+                stream_index=ordinal,
+                out_path=out_path,
+                duration=media.duration,
             )
         if self._sub_path is None:
             raise PanelError(_NEED_SUB_FILE_MSG)
@@ -177,6 +180,7 @@ class SubtitlePanel(OperationPanel):
                 sub_path=self._sub_path,
                 sub_fmt=fmt,
                 out_path=out_path,
+                duration=media.duration,
             )
         except SubtitleUnsupportedError as exc:
             raise PanelError(str(exc)) from exc

@@ -105,7 +105,12 @@ class RemuxPanel(OperationPanel):
         compat = check_subtitle_compat(self.container(), media.streams)
         if not compat.ok:
             raise PanelError(compat.reason or "字幕流不兼容")
-        return RemuxSpec(in_path=media.path, out_path=out_path, streams=media.streams)
+        return RemuxSpec(
+            in_path=media.path,
+            out_path=out_path,
+            streams=media.streams,
+            duration=media.duration,
+        )
 
     def _on_container_changed(self, _index: int) -> None:
         """Recompute warnings and notify the window when the container changes."""
