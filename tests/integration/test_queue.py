@@ -40,7 +40,9 @@ class _SubprocessRunner:
     def __init__(self, ffmpeg: str) -> None:
         self._ffmpeg = ffmpeg
 
-    def run(self, argv: list[str]) -> RunResult:
+    def run(
+        self, argv: list[str], *, stdin_bytes: bytes | None = None
+    ) -> RunResult:
         proc = subprocess.run(  # noqa: S603 - argv from ops engine, no shell
             [self._ffmpeg, *argv],
             capture_output=True,

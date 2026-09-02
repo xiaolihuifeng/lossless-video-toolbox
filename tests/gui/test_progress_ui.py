@@ -72,6 +72,7 @@ class _FakeRunner:
         argv: Sequence[str],
         *,
         on_progress: Callable[[ProgressEvent], None] | None = None,
+        stdin_bytes: bytes | None = None,
     ) -> RunResult:
         self.argv = list(argv)
         if self._block is not None:

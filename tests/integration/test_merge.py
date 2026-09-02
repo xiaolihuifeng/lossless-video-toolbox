@@ -22,6 +22,9 @@ from lossless_toolbox.ops.merge import (
     check_concat_compatibility,
 )
 from lossless_toolbox.probe import probe
+from lossless_toolbox.queue import JobQueue
+from lossless_toolbox.runner import Runner
+from lossless_toolbox.ui.specs import build_job_argv
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -119,3 +122,36 @@ def test_merge_two_segments_preserves_streams(
         assert merged_stream.height == source_stream.height
         assert merged_stream.sample_rate == source_stream.sample_rate
         assert merged_stream.channels == source_stream.channels
+
+
+def test_merge_through_queue_with_real_runner(
+    h264_aac_mp4: _MediaSample, tmp_path: Path
+) -> None:
+    """Given two segments; then the real queue + runner chain feeds the concat
+    list over stdin and produces a lossless merge (status done, codec preserved,
+    duration ≈ the sum of the inputs)."""
+    source = h264_aac_mp4.path
+    seg1 = _split(source, 0.0, SPLIT_MIDPOINT, tmp_path / "q_seg1.mp4")
+    seg2 = _split(
+        source, SPLIT_MIDPOINT, h264_aac_mp4.duration, tmp_path / "q_seg2.mp4"
+    )
+
+    out_path = tmp_path / "merged_queue.mp4"
+    queue = JobQueue[MergeSpec](
+        runner_factory=Runner,
+        argv_builder=build_job_argv,
+    )
+    queue.submit([MergeSpec(paths=[seg1, seg2], out_path=out_path)])
+    records = queue.run()
+
+    assert records[0].status == "done", records[0].error
+    assert out_path.is_file()
+
+    seg1_info = probe(seg1)
+    merged = probe(out_path)
+    expected_duration = seg1_info.duration + probe(seg2).duration
+    assert merged.duration == pytest.approx(expected_duration, abs=1.5)
+
+    merged_video = next(s for s in merged.streams if s.codec_type == "video")
+    source_video = next(s for s in seg1_info.streams if s.codec_type == "video")
+    assert merged_video.codec_name == source_video.codec_name

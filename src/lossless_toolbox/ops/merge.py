@@ -67,6 +67,19 @@ class MergeSpec(BaseModel):
     paths: list[Path]
     out_path: Path
 
+    def build_argv(self) -> list[str]:
+        """Build the concat-demuxer argv (flags-only, no binary prefix)."""
+        return build_plan(self).argv
+
+    def build_stdin_data(self) -> bytes:
+        """Return the concat file list as UTF-8 bytes for the stdin channel.
+
+        The concat demuxer reads its file list from standard input (``-i -``);
+        the queue feeds this payload to the runner so the list never touches a
+        temp file.
+        """
+        return build_plan(self).concat_list.encode("utf-8")
+
 
 class MergePlan(BaseModel):
     """A built merge: the concat list (fed via stdin) and the ffmpeg argv."""

@@ -38,7 +38,9 @@ class _FakeRunner:
         self._cancel_event = cancel_event
         self._release_event = release_event
 
-    def run(self, argv: list[str]) -> RunResult:
+    def run(
+        self, argv: list[str], *, stdin_bytes: bytes | None = None
+    ) -> RunResult:
         self._log.append(("run", tuple(argv)))
         outcome = self._outcomes.pop(0)
         if outcome == "success":

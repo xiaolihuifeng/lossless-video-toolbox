@@ -43,8 +43,9 @@ logger = logging.getLogger(__name__)
 class ProgressRunner(Protocol):
     """Structural contract of :class:`lossless_toolbox.runner.Runner`.
 
-    ``run`` executes argv with an optional progress callback; ``cancel`` is
-    safe to call from any thread.
+    ``run`` executes argv with an optional progress callback and an optional
+    stdin payload (fed to concat-demuxer merges); ``cancel`` is safe to call
+    from any thread.
     """
 
     def run(
@@ -52,6 +53,7 @@ class ProgressRunner(Protocol):
         argv: Sequence[str],
         *,
         on_progress: Callable[[ProgressEvent], None] | None = None,
+        stdin_bytes: bytes | None = None,
     ) -> RunResult:
         """Execute ``argv`` to completion and report the run outcome."""
         ...
@@ -74,9 +76,13 @@ class RunnerAdapter:
         self._runner = runner
         self._on_progress = on_progress
 
-    def run(self, argv: Sequence[str]) -> QueueRunResult:
+    def run(
+        self, argv: Sequence[str], *, stdin_bytes: bytes | None = None
+    ) -> QueueRunResult:
         """Run argv via the wrapped runner, keeping only the queue contract."""
-        result = self._runner.run(argv, on_progress=self._on_progress)
+        result = self._runner.run(
+            argv, on_progress=self._on_progress, stdin_bytes=stdin_bytes
+        )
         return QueueRunResult(
             exit_code=result.exit_code, stderr_tail=result.stderr_tail
         )

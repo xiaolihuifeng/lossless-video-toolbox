@@ -7,7 +7,9 @@ Execution is single-concurrency: ffmpeg saturates IO/CPU on its own, so a
 failed job just records its error and the run continues (F2). Two cancel
 strengths: :meth:`JobQueue.cancel_current` stops only the running job (the rest
 of the batch still runs), while :meth:`JobQueue.cancel_all` also clears every
-remaining queued job. All shared state is lock-guarded so submit/cancel may be
+remaining queued job. A spec may expose ``build_stdin_data()``; its bytes are
+passed to the runner as ``stdin_bytes`` (the concat-demuxer merge feeds its
+file list this way). All shared state is lock-guarded so submit/cancel may be
 called from any thread while :meth:`JobQueue.run` executes in another.
 """
 
@@ -16,7 +18,7 @@ from __future__ import annotations
 import threading
 from collections import deque
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Generic, Literal, Protocol, TypeVar
+from typing import TYPE_CHECKING, Generic, Literal, Protocol, TypeVar, cast
 
 from pydantic import BaseModel, ConfigDict
 
@@ -52,15 +54,30 @@ class Runner(Protocol):
 
     ``run`` must not raise for a failed process (nonzero exit code is the
     failure signal); ``cancel`` must be safe to call cross-thread.
+    ``stdin_bytes`` feeds a spec's stdin payload (e.g. the concat demuxer file
+    list for merges); runners that need no stdin simply ignore the keyword.
     """
 
-    def run(self, argv: list[str]) -> RunResult:
+    def run(
+        self, argv: list[str], *, stdin_bytes: bytes | None = None
+    ) -> RunResult:
         """Execute ``argv`` to completion and return the exit-code outcome."""
         ...
 
     def cancel(self) -> None:
         """Request cancellation of the in-flight ``run`` (thread-safe)."""
         ...
+
+
+def _spec_stdin_bytes(spec: object) -> bytes | None:
+    """Return ``spec``'s stdin payload via ``build_stdin_data``, or None.
+
+    Only specs that feed data over stdin (e.g. the concat-demuxer merge) expose
+    ``build_stdin_data``; every other spec yields None so the runner is called
+    with its plain ``argv``.
+    """
+    builder = getattr(spec, "build_stdin_data", None)
+    return cast("bytes | None", builder()) if callable(builder) else None
 
 
 class JobRecord(BaseModel, Generic[SpecT]):
@@ -241,7 +258,12 @@ class JobQueue(Generic[SpecT]):
 
         try:
             argv = self._argv_builder(job.spec)
-            result = runner.run(argv)
+            stdin_bytes = _spec_stdin_bytes(job.spec)
+            result = (
+                runner.run(argv, stdin_bytes=stdin_bytes)
+                if stdin_bytes is not None
+                else runner.run(argv)
+            )
         except Exception as exc:  # noqa: BLE001 - job boundary: record, never raise
             job.status = "failed"
             job.error = f"{type(exc).__name__}: {exc}"
