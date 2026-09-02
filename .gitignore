@@ -1,0 +1,8 @@
+.venv/
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+__pycache__/
+resources/bin/
+tests/.media_cache/

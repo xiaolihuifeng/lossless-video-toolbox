@@ -1,0 +1,83 @@
+[project]
+name = "lossless-toolbox"
+version = "0.1.0"
+description = "Lossless video processing toolbox"
+requires-python = ">=3.10"
+license = "GPL-3.0-or-later"
+dependencies = [
+    "pyside6>=6.8,<7",
+    "pydantic>=2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-qt>=4.4",
+    "ruff>=0.8",
+    "basedpyright>=1.21",
+    "pyinstaller>=6",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/lossless_toolbox"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/lossless_toolbox"]
+
+# ─────────────────────────────────────────────────────────────────
+# basedpyright
+# ─────────────────────────────────────────────────────────────────
+[tool.basedpyright]
+typeCheckingMode = "strict"
+pythonVersion = "3.10"
+pythonPlatform = "All"
+include = ["src", "tests"]
+exclude = ["**/__pycache__", "**/.venv", "**/build", "**/dist"]
+
+# ─────────────────────────────────────────────────────────────────
+# ruff - select ALL, ignore only formatter conflicts and noise
+# ─────────────────────────────────────────────────────────────────
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "COM812",   # missing trailing comma (formatter conflict)
+    "ISC001",   # implicit string concat (formatter conflict)
+    "D203",     # one-blank-line-before-class (pick D211)
+    "D213",     # multi-line-summary-second-line (pick D212)
+    "CPY001",   # missing copyright notice
+    "FBT001",   # boolean positional arg in def
+    "FBT002",   # boolean positional default in def
+    "TD002",    # missing TODO author
+    "TD003",    # missing TODO link
+    "FIX002",   # line contains TODO
+]
+fixable = ["ALL"]
+unfixable = []
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+    "S101",     # assert is the point of pytest
+    "ARG",      # unused args (fixtures appear unused)
+    "PLR2004",  # magic numbers in test data
+    "SLF001",   # tests may access private members
+    "D",        # docstrings not required in tests
+    "INP001",   # pytest convention: no __init__.py in test dirs
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+docstring-code-line-length = "dynamic"
