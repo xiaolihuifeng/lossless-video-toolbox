@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Lossless Toolbox
+Name[zh_CN]=无损视频工具箱
+GenericName=Lossless Video Toolbox
+GenericName[zh_CN]=无损视频工具箱
+Comment=Lossless (stream-copy) video remux, cut, and merge toolbox
+Comment[zh_CN]=不重编码的视频封装、剪切、合并工具箱
+Exec=lossless-toolbox
+Icon=lossless-toolbox
+Terminal=false
+Categories=AudioVideo;Video;Utility;
+Keywords=video;ffmpeg;remux;cut;merge;lossless;

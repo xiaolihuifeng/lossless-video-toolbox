@@ -1,0 +1,25 @@
+# lossless-toolbox packaging checksums.lock
+#
+# Pins each download URL to its SHA-256 digest. The build script
+# (build_linux.sh) refuses to proceed unless a fetched artifact matches the
+# digest recorded here, so a build is reproducible and tamper-evident.
+#
+# Format: <canonical URL>  <sha256>
+#
+# The BtbN FFmpeg-Builds digests are transcribed from the upstream
+# `checksums.sha256` published alongside each release (the `latest` tag is a
+# rolling auto-build, so re-pin when the upstream rebuilds). The linuxdeploy
+# `continuous` tag is also rolling; its digests were captured at build time on
+# 2026-09-02 and are provided for reproducibility, not an upstream signature.
+
+# BtbN FFmpeg-Builds (static, GPL) — official upstream digest
+https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz  6ac4df472779ff14b197496e21524c9fc4617f11b3a24ce5acc09e101840785b
+https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linuxarm64-gpl.tar.xz  51b73286ccc8f9bd5a87cb532a441788dd3df33fc587ff05776b53d10d03d405
+
+# linuxdeploy (rolling `continuous` tag) — captured 2026-09-02
+https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage  36a2d7e274d12e1050d0e9ecfe11d339ed54720b2bec464c286d53f8b07f5c62
+https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-aarch64.AppImage  556ab80baa98e600aa80f0dcedfb70bca0e1ce7e9f147fb345be3fcc3e91b2b1
+
+# AppImage type-2 runtime (appimagetool embeds it into the AppImage) — captured 2026-09-02
+https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64  1cc49bcf1e2ccd593c379adb17c9f85a36d619088296504de95b1d06215aebbf
+https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-aarch64  7d5d772b7c32f0c84caf0a452a3072a5709027d7eac5856feb89a7a7a8881372
