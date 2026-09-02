@@ -89,6 +89,16 @@ class CutSpec(BaseModel):
     has_attached_pic: bool = False
     format_start_time: float = 0.0
 
+    def build_argv(self) -> list[str]:
+        """Build the keyframe-snapped cut argv (flags-only, no binary prefix).
+
+        The batch queue's argv dispatcher calls this; the snapshot is computed
+        by :meth:`build_plan` (a pure function), whose ``CutRangeError`` /
+        ``UnsupportedInputError`` propagate to the queue and land on the job as
+        ``failed``, mirroring the merge spec's ``MergeError`` semantics.
+        """
+        return self.build_plan().argv
+
     def build_plan(self) -> CutPlan:
         """Validate the cut, snap to keyframes and build the ffmpeg argv.
 
