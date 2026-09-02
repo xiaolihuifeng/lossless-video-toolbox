@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 import pytest
-from PySide6.QtCore import QMimeData, QPoint, QPointF, Qt, QUrl
+from PySide6.QtCore import QMimeData, QPoint, QPointF, Qt, QThread, QUrl
 from PySide6.QtGui import QDragEnterEvent, QDropEvent
 from PySide6.QtTest import QSignalSpy
 from PySide6.QtWidgets import QMessageBox
@@ -113,10 +113,26 @@ def _wait_probed(qtbot: QtBot, window: MainWindow) -> None:
     qtbot.waitUntil(
         lambda: all(
             entry.media is not None or entry.probe_error is not None
-            for entry in window._model.entries()
+            for entry in window.file_panel.model().entries()
         ),
         timeout=_PROBE_TIMEOUT_MS,
     )
+
+
+def _wait_panel_workers(window: MainWindow) -> None:
+    """Wait for async panel probe threads (remux compat) to finish.
+
+    Blocks (test context only) so no QThread is destroyed while running
+    when the window is garbage-collected at test teardown.
+    """
+    for panel in window.panels.values():
+        for thread in panel.findChildren(QThread):
+            thread.wait(10_000)
+
+
+def _select_row(window: MainWindow, row: int) -> None:
+    """Select a file-list row, mirroring the user's list selection."""
+    window.file_panel.list_view().setCurrentIndex(window.file_panel.model().index(row))
 
 
 def test_window_constructs_and_shows_zh_cn_controls(qtbot: QtBot) -> None:
@@ -139,25 +155,30 @@ def test_drop_two_fixtures_populates_list_and_info_panel(
     """(b) Two dropped fixtures become 2 rows; the probe panel renders streams."""
     window = MainWindow()
     qtbot.addWidget(window)
-    added, skipped = window.add_files([str(h264_aac_mp4.path), str(hevc_aac_mkv.path)])
+    added, skipped = window.file_panel.add_files(
+        [str(h264_aac_mp4.path), str(hevc_aac_mkv.path)]
+    )
     assert (added, skipped) == (2, 0)
-    assert window._model.rowCount() == 2
+    model = window.file_panel.model()
+    assert model.rowCount() == 2
     _wait_probed(qtbot, window)
 
-    row0 = window._model.index(0)
+    row0 = model.index(0)
     assert row0.isValid()
     assert "12.0s" in str(row0.data())
 
-    window._file_list.setCurrentIndex(row0)
-    assert window._stream_table.rowCount() >= 2
+    _select_row(window, 0)
+    table = window.info_panel.stream_table
+    assert table.rowCount() >= 2
     type_texts: set[str] = set()
-    for row in range(window._stream_table.rowCount()):
-        item = window._stream_table.item(row, 1)
+    for row in range(table.rowCount()):
+        item = table.item(row, 1)
         if item is not None:
             type_texts.add(item.text())
     assert "视频" in type_texts
     assert "音频" in type_texts
-    assert "时长：" in window._duration_label.text()
+    assert "时长：" in window.info_panel.duration_label.text()
+    _wait_panel_workers(window)
 
 
 def test_drop_non_media_file_is_skipped_with_hint(
@@ -168,9 +189,9 @@ def test_drop_non_media_file_is_skipped_with_hint(
     qtbot.addWidget(window)
     txt = tmp_path / "notes.txt"
     txt.write_text("not media", encoding="utf-8")
-    added, skipped = window.add_files([str(h264_aac_mp4.path), str(txt)])
+    added, skipped = window.file_panel.add_files([str(h264_aac_mp4.path), str(txt)])
     assert (added, skipped) == (1, 1)
-    assert window._model.rowCount() == 1
+    assert window.file_panel.model().rowCount() == 1
     assert "已跳过 1 个非媒体文件" in window.statusBar().currentMessage()
 
 
@@ -206,10 +227,12 @@ def test_drop_event_accepts_local_urls_and_filters_foreign(
         Qt.KeyboardModifier.NoModifier,
     )
     window.dropEvent(drop_event)
-    assert window._model.rowCount() == 1
+    assert window.file_panel.model().rowCount() == 1
 
 
-def test_run_button_enabled_only_with_files(qtbot: QtBot, tmp_path: Path) -> None:
+def test_run_button_enabled_only_with_files(
+    qtbot: QtBot, tmp_path: Path, h264_aac_mp4: _MediaSample
+) -> None:
     """(d) The run button tracks the file list; cancel tracks the worker."""
     window = MainWindow()
     qtbot.addWidget(window)
@@ -218,14 +241,14 @@ def test_run_button_enabled_only_with_files(qtbot: QtBot, tmp_path: Path) -> Non
 
     txt = tmp_path / "a.txt"
     txt.write_text("x", encoding="utf-8")
-    window.add_files([str(txt)])
+    window.file_panel.add_files([str(txt)])
     assert not window._run_button.isEnabled()
 
-    media = tmp_path / "clip.mp4"
-    media.write_bytes(b"fake")
-    window.add_files([str(media)])
-    assert window._run_button.isEnabled()
+    window.file_panel.add_files([str(h264_aac_mp4.path)])
+    _select_row(window, 0)
     _wait_probed(qtbot, window)
+    assert window._run_button.isEnabled()
+    _wait_panel_workers(window)
 
 
 def test_default_output_path_naming_rules() -> None:
@@ -256,8 +279,9 @@ def test_overwrite_confirm_dialog_gates_the_run(
     """(e) An existing default output asks for overwrite confirmation."""
     window = MainWindow()
     qtbot.addWidget(window)
-    window.add_files([str(h264_aac_mp4.path)])
+    window.file_panel.add_files([str(h264_aac_mp4.path)])
     _wait_probed(qtbot, window)
+    _select_row(window, 0)
     window._output_dir_edit.setText(str(tmp_path))
     (tmp_path / f"{h264_aac_mp4.path.stem}.mkv").write_bytes(b"existing")
 
@@ -275,6 +299,7 @@ def test_overwrite_confirm_dialog_gates_the_run(
     assert "已存在" in str(calls[0][2])
     assert window._queue_worker is None
     assert "已取消运行" in window.statusBar().currentMessage()
+    _wait_panel_workers(window)
 
 
 def test_run_flow_submits_jobs_and_summarizes(
@@ -290,8 +315,9 @@ def test_run_flow_submits_jobs_and_summarizes(
 
     window = MainWindow(runner_factory=factory)
     qtbot.addWidget(window)
-    window.add_files([str(h264_aac_mp4.path)])
+    window.file_panel.add_files([str(h264_aac_mp4.path)])
     _wait_probed(qtbot, window)
+    _select_row(window, 0)
     window._output_dir_edit.setText(str(tmp_path))
     window._run_button.click()
 
@@ -300,6 +326,7 @@ def test_run_flow_submits_jobs_and_summarizes(
     assert "-y" in fakes[0].argv
     assert str(tmp_path / f"{h264_aac_mp4.path.stem}.mkv") in fakes[0].argv
     assert "1 成功" in window._summary_label.text()
+    _wait_panel_workers(window)
 
 
 def test_queue_worker_signal_sequence_with_fake_runner(qtbot: QtBot) -> None:
