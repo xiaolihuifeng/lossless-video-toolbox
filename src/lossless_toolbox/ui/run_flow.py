@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, cast
 from PySide6.QtWidgets import QMessageBox
 
 from .specs import build_job_argv, default_output_path
+from .texts import SUMMARY_DONE_FMT, SUMMARY_RUNNING
 from .widgets.base import OperationPanel, PanelError
 from .widgets.merge import MergePanel
 from .workers import QueueWorker
@@ -51,7 +52,10 @@ def start_run(win: MainWindow) -> None:
     if existing and not confirm_overwrite(win, len(existing)):
         win.statusBar().showMessage("已取消运行", 5000)
         return
-    win._summary_label.setText("运行中…")
+    open_dir = output_dir or (outputs[0].parent if outputs else Path.home())
+    win.progress_panel.reset(SUMMARY_RUNNING)
+    win.progress_panel.set_output_dir(open_dir)
+    win._summary_label.setText(SUMMARY_RUNNING)
     worker = QueueWorker(
         specs,
         runner_factory=win._runner_factory,
@@ -117,6 +121,7 @@ def confirm_overwrite(win: MainWindow, count: int) -> bool:
 
 def connect_worker(win: MainWindow, worker: QueueWorker) -> None:
     """Wire the queue worker's signals to status/summary updates."""
+    win.progress_panel.attach(worker)
     worker.job_started.connect(partial(_on_job_started, win))
     worker.job_finished.connect(partial(_on_job_finished, win))
     worker.all_done.connect(partial(_on_all_done, win))
@@ -152,7 +157,9 @@ def _on_all_done(win: MainWindow, jobs: object) -> None:
         cleanup = getattr(getattr(record, "spec", None), "cleanup", None)
         if cleanup is not None:
             cleanup()
-    win._summary_label.setText(f"完成：{done} 成功 / {failed} 失败 / {cancelled} 取消")
+    win._summary_label.setText(
+        SUMMARY_DONE_FMT.format(done=done, failed=failed, cancelled=cancelled)
+    )
     win.statusBar().showMessage("批处理结束", 5000)
 
 

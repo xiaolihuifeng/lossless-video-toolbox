@@ -35,9 +35,10 @@ from lossless_toolbox.runner import Runner
 
 from .file_panel import FileEntry, FilePanel
 from .info_panel import InfoPanel
+from .progress_panel import ProgressPanel
 from .run_flow import confirm_overwrite, start_run
 from .specs import build_job_argv, default_output_path
-from .texts import OP_ITEMS
+from .texts import OP_ITEMS, OPEN_DIR_FAILED_MSG
 from .widgets import (
     CutPanel,
     MergePanel,
@@ -88,6 +89,7 @@ class MainWindow(QMainWindow):
 
         self.file_panel = FilePanel()
         self.info_panel = InfoPanel()
+        self.progress_panel = ProgressPanel()
         self.panels = {
             panel_type.operation: panel_type() for panel_type in _PANEL_TYPES
         }
@@ -119,9 +121,14 @@ class MainWindow(QMainWindow):
 
     def _build_layout(self) -> None:
         """Compose splitter, panel stack and the bottom operation bar."""
+        right_pane = QWidget()
+        right_layout = QVBoxLayout(right_pane)
+        right_layout.addWidget(self.info_panel)
+        right_layout.addWidget(self.progress_panel)
+
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.addWidget(self.file_panel)
-        splitter.addWidget(self.info_panel)
+        splitter.addWidget(right_pane)
 
         bar = QHBoxLayout()
         bar.addWidget(QLabel("操作"))
@@ -153,6 +160,7 @@ class MainWindow(QMainWindow):
         self.file_panel.file_probed.connect(self._on_file_probed)
         self.file_panel.files_changed.connect(self._update_buttons)
         self.file_panel.skipped.connect(self._on_files_skipped)
+        self.progress_panel.open_failed.connect(self._on_open_dir_failed)
         self._op_combo.currentIndexChanged.connect(self._on_op_changed)
         for panel in self.panels.values():
             panel.changed.connect(self._on_panel_changed)
@@ -177,6 +185,10 @@ class MainWindow(QMainWindow):
     def _on_files_skipped(self, count: int) -> None:
         """Surface the non-media drop count in the status bar."""
         self.statusBar().showMessage(f"已跳过 {count} 个非媒体文件", 5000)
+
+    def _on_open_dir_failed(self, path: str) -> None:
+        """Report a failed ``xdg-open`` launch in the status bar."""
+        self.statusBar().showMessage(OPEN_DIR_FAILED_MSG % path, 5000)
 
     def _on_op_changed(self, index: int) -> None:
         """Switch the panel stack and re-validate against the selection."""
