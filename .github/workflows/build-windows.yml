@@ -163,7 +163,8 @@ jobs:
           $srcDir = (Resolve-Path 'dist/lossless-toolbox').Path
           $outFile = Join-Path (Get-Location) 'lossless-toolbox-setup-0.1.0.exe'
           $nsiPath = Resolve-Path 'packaging/lossless-toolbox.nsi'
-          & $makensisPath "/DSRCDIR=`"$srcDir`"" "/DOUTFILE=`"$outFile`"" $nsiPath
+          # No embedded quotes in /D values: the NSI wraps ${OUTFILE}/${SRCDIR} itself, and a literal '"' splits OutFile into 2 tokens.
+          & $makensisPath "/DSRCDIR=$srcDir" "/DOUTFILE=$outFile" $nsiPath
           if ($LASTEXITCODE -ne 0) {
             throw "makensis failed with exit code $LASTEXITCODE"
           }

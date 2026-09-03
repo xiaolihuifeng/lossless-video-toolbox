@@ -226,6 +226,22 @@ def test_nsi_script_is_referenced_as_a_real_file_not_embedded_base64() -> None:
         assert required in nsi, f"NSI missing required directive: {required}"
 
 
+def test_makensis_macro_values_do_not_embed_quotes() -> None:
+    """/DNAME=value arguments must not carry literal quotes.
+
+    A literal '"' inside /DOUTFILE=/DSRCDIR leaks into the expanded NSI line
+    and splits ``OutFile`` into two tokens ("expects 1 parameters, got 2").
+    The NSI script already wraps the macros in quotes, so the shell must pass
+    bare values.
+    """
+    build = [s for s in _steps() if "makensisPath" in str(s.get("run", ""))]
+    run = str(build[0].get("run", ""))
+    assert "/DSRCDIR=$srcDir" in run
+    assert "/DOUTFILE=$outFile" in run
+    assert '`"$srcDir`"' not in run
+    assert '`"$outFile`"' not in run
+
+
 def test_unsigned_smartscreen_notice_is_documented() -> None:
     """The workflow must spell out that the unsigned build trips SmartScreen."""
     text = _workflow_text()
