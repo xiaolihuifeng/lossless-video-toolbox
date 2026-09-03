@@ -143,7 +143,15 @@ jobs:
           $env:Path = [System.Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + $env:Path
           $makensis = Get-Command makensis -ErrorAction SilentlyContinue
           if (-not $makensis) {
-            $candidate = Get-ChildItem 'C:\ProgramData\chocolatey\lib' -Recurse -Filter 'makensis.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+            # nsis.install deploys makensis.exe to Program Files, not under
+            # chocolatey\lib and without a PATH shim; search the real install
+            # locations as well as the choco lib tree.
+            $candidate = Get-ChildItem @(
+              'C:\Program Files (x86)\NSIS',
+              'C:\Program Files\NSIS',
+              'C:\ProgramData\chocolatey\lib'
+            ) -Recurse -Filter 'makensis.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+            Write-Host "makensis probe: ProgramFilesNSIS=$(Test-Path 'C:\Program Files (x86)\NSIS\makensis.exe') ; lib=$(Test-Path 'C:\ProgramData\chocolatey\lib')"
             if (-not $candidate) {
               throw 'makensis not found after choco install - PATH refresh failed'
             }
