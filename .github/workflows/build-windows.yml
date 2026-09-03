@@ -160,36 +160,9 @@ jobs:
           $makensisPath = if ($makensis.PSObject.Properties.Name -contains 'Source') { $makensis.Source } else { $makensis.FullName }
           Write-Host "makensis: $makensisPath"
 
-          # The NSIS script is embedded as wrapped base64 so the YAML literal
-          # block keeps a uniform 10-space indent (no here-string closing tag
-          # sitting in column 0). Whitespace/newlines are stripped on decode.
-          $nsiB64 = 'OyBMb3NzbGVzcyBUb29sYm94IGluc3RhbGxlciAtIGdlbmVyYXRlZCBieSAuZ2l0aHViL3dvcmtmbG93cy9idWlsZC13aW5k'
-            + 'b3dzLnltbAo7IFByb2R1Y2VkIHdpdGggbWFrZW5zaXMgb24gdGhlIEdpdEh1YiBBY3Rpb25zIHdpbmRvd3MtbGF0ZXN0IHJ1'
-            + 'bm5lci4KIWRlZmluZSBBUFBfTkFNRSAiTG9zc2xlc3MgVG9vbGJveCIKIWRlZmluZSBBUFBfVkVSU0lPTiAiMC4xLjAiCiFk'
-            + 'ZWZpbmUgQVBQX0VYRSAibG9zc2xlc3MtdG9vbGJveC5leGUiCiFkZWZpbmUgVU5JTlNUX0tFWSAiU29mdHdhcmVcTWljcm9z'
-            + 'b2Z0XFdpbmRvd3NcQ3VycmVudFZlcnNpb25cVW5pbnN0YWxsXExvc3NsZXNzVG9vbGJveCIKCk5hbWUgIiR7QVBQX05BTUV9'
-            + 'ICR7QVBQX1ZFUlNJT059IgpPdXRGaWxlICIke09VVEZJTEV9IgpVbmljb2RlIFRydWUKSW5zdGFsbERpciAiJFBST0dSQU1G'
-            + 'SUxFUzY0XExvc3NsZXNzIFRvb2xib3giCkluc3RhbGxEaXJSZWdLZXkgSEtDVSAiJHtVTklOU1RfS0VZfSIgIkluc3RhbGxE'
-            + 'aXIiClJlcXVlc3RFeGVjdXRpb25MZXZlbCB1c2VyCgpQYWdlIGRpcmVjdG9yeQpQYWdlIGluc3RmaWxlcwpVbmluc3RQYWdl'
-            + 'IHVuaW5zdENvbmZpcm0KVW5pbnN0UGFnZSBpbnN0ZmlsZXMKClNlY3Rpb24gIkluc3RhbGwiCiAgU2V0T3V0UGF0aCAiJElO'
-            + 'U1RESVIiCiAgRmlsZSAvciAiJHtTUkNESVJ9XCoiCiAgV3JpdGVVbmluc3RhbGxlciAiJElOU1RESVJcdW5pbnN0YWxsLmV4'
-            + 'ZSIKICBDcmVhdGVEaXJlY3RvcnkgIiRTTVBST0dSQU1TXExvc3NsZXNzIFRvb2xib3giCiAgQ3JlYXRlU2hvcnRjdXQgIiRT'
-            + 'TVBST0dSQU1TXExvc3NsZXNzIFRvb2xib3hcTG9zc2xlc3MgVG9vbGJveC5sbmsiICIkSU5TVERJUlwke0FQUF9FWEV9Igog'
-            + 'IFdyaXRlUmVnU3RyIEhLQ1UgIiR7VU5JTlNUX0tFWX0iICJEaXNwbGF5TmFtZSIgIiR7QVBQX05BTUV9IgogIFdyaXRlUmVn'
-            + 'U3RyIEhLQ1UgIiR7VU5JTlNUX0tFWX0iICJEaXNwbGF5VmVyc2lvbiIgIiR7QVBQX1ZFUlNJT059IgogIFdyaXRlUmVnU3Ry'
-            + 'IEhLQ1UgIiR7VU5JTlNUX0tFWX0iICJQdWJsaXNoZXIiICJMb3NzbGVzcyBUb29sYm94IgogIFdyaXRlUmVnU3RyIEhLQ1Ug'
-            + 'IiR7VU5JTlNUX0tFWX0iICJJbnN0YWxsRGlyIiAiJElOU1RESVIiCiAgV3JpdGVSZWdTdHIgSEtDVSAiJHtVTklOU1RfS0VZ'
-            + 'fSIgIlVuaW5zdGFsbFN0cmluZyIgJyIkSU5TVERJUlx1bmluc3RhbGwuZXhlIicKU2VjdGlvbkVuZAoKU2VjdGlvbiAiVW5p'
-            + 'bnN0YWxsIgogIERlbGV0ZSAiJElOU1RESVJcdW5pbnN0YWxsLmV4ZSIKICBEZWxldGUgIiRTTVBST0dSQU1TXExvc3NsZXNz'
-            + 'IFRvb2xib3hcTG9zc2xlc3MgVG9vbGJveC5sbmsiCiAgUk1EaXIgIiRTTVBST0dSQU1TXExvc3NsZXNzIFRvb2xib3giCiAg'
-            + 'Uk1EaXIgL3IgIiRJTlNURElSIgogIERlbGV0ZVJlZ0tleSBIS0NVICIke1VOSU5TVF9LRVl9IgpTZWN0aW9uRW5kCg=='
-          $nsi = [System.Text.Encoding]::ASCII.GetString(
-            [System.Convert]::FromBase64String($nsiB64)
-          )
-          $nsiPath = Join-Path $env:RUNNER_TEMP 'lossless-toolbox.nsi'
-          Set-Content -Path $nsiPath -Value $nsi -Encoding ascii
           $srcDir = (Resolve-Path 'dist/lossless-toolbox').Path
           $outFile = Join-Path (Get-Location) 'lossless-toolbox-setup-0.1.0.exe'
+          $nsiPath = Resolve-Path 'packaging/lossless-toolbox.nsi'
           & $makensisPath "/DSRCDIR=`"$srcDir`"" "/DOUTFILE=`"$outFile`"" $nsiPath
           if ($LASTEXITCODE -ne 0) {
             throw "makensis failed with exit code $LASTEXITCODE"

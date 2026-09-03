@@ -198,6 +198,34 @@ def test_nsis_installer_is_built_via_chocolatey_makensis() -> None:
     assert "lossless-toolbox-setup-0.1.0.exe" in run
 
 
+def test_nsi_script_is_referenced_as_a_real_file_not_embedded_base64() -> None:
+    """The NSI installer script must be a repo file, not base64 embedded inline.
+
+    Earlier revisions embedded the NSI content as wrapped base64 whose multiline
+    ``+ '...'`` continuations violated PowerShell line-continuation rules and
+    crashed with an Int32 conversion error. The build step must reference the
+    checked-in ``packaging/lossless-toolbox.nsi`` instead.
+    """
+    nsi_path = (
+        Path(__file__).resolve().parents[2] / "packaging" / "lossless-toolbox.nsi"
+    )
+    assert nsi_path.is_file(), "packaging/lossless-toolbox.nsi must exist"
+    build = [s for s in _steps() if "makensisPath" in str(s.get("run", ""))]
+    run = str(build[0].get("run", ""))
+    assert "packaging/lossless-toolbox.nsi" in run
+    assert "FromBase64String" not in run
+    assert "nsiB64" not in run
+    nsi = nsi_path.read_text(encoding="utf-8")
+    for required in (
+        "!define APP_NAME",
+        "!define APP_VERSION",
+        'File /r "${SRCDIR}\\*"',
+        "WriteUninstaller",
+        'Section "Uninstall"',
+    ):
+        assert required in nsi, f"NSI missing required directive: {required}"
+
+
 def test_unsigned_smartscreen_notice_is_documented() -> None:
     """The workflow must spell out that the unsigned build trips SmartScreen."""
     text = _workflow_text()
