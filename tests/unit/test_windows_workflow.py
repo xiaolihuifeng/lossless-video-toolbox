@@ -183,8 +183,14 @@ def test_portable_zip_artifact_is_uploaded() -> None:
 
 
 def test_nsis_installer_is_built_via_chocolatey_makensis() -> None:
-    """makensis is installed with choco and an NSIS installer is compiled."""
-    assert any("choco install makensis" in str(s.get("run", "")) for s in _steps())
+    """The NSIS compiler (makensis) is installed via choco and an installer is built.
+
+    The choco package name is ``nsis`` (``makensis`` is only the installed
+    compiler executable), so the workflow must install ``nsis`` and then invoke
+    ``makensis.exe`` to compile the installer.
+    """
+    install = [s for s in _steps() if "choco install" in str(s.get("run", ""))]
+    assert any("choco install nsis" in str(s.get("run", "")) for s in install)
     build = [s for s in _steps() if "makensisPath" in str(s.get("run", ""))]
     assert len(build) >= 1
     run = str(build[0].get("run", ""))
